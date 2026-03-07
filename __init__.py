@@ -16,12 +16,12 @@ Autocollimator & Piezo Motor Alignment Demo の分割実装。
   python -m demo --mode pamc104     # PAMC-104 RS232C 直接通信モード
   python demo/main.py --mode pamc104
 """
-from .pamc204_wrapper import PAMC204
-from .pamc104_wrapper import PAMC104
-from .ac_thread import AcThread
-from .adc_thread import ADCControlThread
-from .position_routine import PositionRoutineThread
-from .gui import ADCGUI, PiezoMode
+from pamc204_wrapper import PAMC204
+from pamc104_wrapper import PAMC104
+from ac_thread import AcThread
+from adc_thread import ADCControlThread
+from position_routine_thread import PositionRoutineThread
+from gui import ADCGUI, PiezoMode
 
 __all__ = [
     "PAMC204",

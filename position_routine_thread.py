@@ -7,7 +7,7 @@ import time
 
 import tkinter as tk
 
-from .adc_thread import ADCControlThread
+from adc_thread import ADCControlThread
 
 
 class PositionRoutineThread(threading.Thread):

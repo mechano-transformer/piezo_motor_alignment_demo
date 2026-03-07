@@ -12,11 +12,7 @@ import sys
 import os
 import argparse
 
-# スクリプトとして直接実行された場合、親ディレクトリを sys.path に追加する
-if __name__ == "__main__":
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from demo.gui import ADCGUI, PiezoMode
+from gui import ADCGUI, PiezoMode
 
 
 def main():
