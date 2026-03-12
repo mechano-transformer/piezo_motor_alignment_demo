@@ -22,6 +22,7 @@ from pamc104_wrapper import PAMC104
 from ac_thread import AcThread
 from adc_thread import ADCControlThread
 from position_routine_thread import PositionRoutineThread
+from auto_divisioner import AutoDivisionerThread
 
 
 class PiezoMode(str, Enum):
@@ -322,6 +323,12 @@ class ADCGUI(tk.Tk):
             variable=self.swap_axes_var,
             command=self._update_swap_axes,
         ).pack(anchor="w", pady=5)
+
+        self.auto_div_btn = tk.Button(
+            config_frame, text="Auto Axis Assignment",
+            command=self._start_auto_divisioner, width=20,
+        )
+        self.auto_div_btn.pack(pady=5)
 
     def _setup_ADC_tab(self):
         """ADC 制御パネル。"""
@@ -665,6 +672,45 @@ class ADCGUI(tk.Tk):
         self.swap_axes = self.swap_axes_var.get()
         print(f"Swap axes: {'Enabled' if self.swap_axes else 'Disabled'}")
 
+    # ================================================================
+    # 自動軸振り分け
+    # ================================================================
+
+    def _start_auto_divisioner(self):
+        """自動軸振り分けを開始する。"""
+        if not self.AC.is_open:
+            messagebox.showerror("Error", "Please connect to autocollimator first.")
+            return
+        if not self.pamc.is_connected:
+            messagebox.showerror("Error", f"Please connect to {self._mode.label} first.")
+            return
+        if not self.worker or not self.worker.running:
+            messagebox.showerror("Error", "Please start reading from autocollimator first.")
+            return
+        if self.current_unit != "deg":
+            messagebox.showerror("Error", f"Unit must be 'deg', but current unit is '{self.current_unit}'.\nPlease change the unit to 'deg' before running.")
+            return
+        if self.ADC_active:
+            messagebox.showerror("Error", "Please stop ADC before running auto axis assignment.")
+            return
+        if hasattr(self, '_auto_div_thread') and self._auto_div_thread and self._auto_div_thread.running:
+            messagebox.showwarning("Warning", "Auto axis assignment is already running.")
+            return
+
+        self.auto_div_btn.config(state=tk.DISABLED, text="Running...")
+        self._auto_div_thread = AutoDivisionerThread(self, on_complete=self._on_auto_divisioner_complete)
+        self._auto_div_thread.start()
+        print("Auto axis assignment started")
+
+    def _on_auto_divisioner_complete(self, success: bool, message: str):
+        """自動軸振り分け完了コールバック。"""
+        self.auto_div_btn.config(state=tk.NORMAL, text="Auto Axis Assignment")
+        if success:
+            messagebox.showinfo("Auto Axis Assignment", message)
+        else:
+            messagebox.showerror("Auto Axis Assignment Error", message)
+        print(f"Auto axis assignment finished: {'SUCCESS' if success else 'FAILED'}")
+
     def _update_smoothing_enabled(self):
         self.smoothing_enabled = self.smoothing_enabled_var.get()
         if self.worker:
@@ -863,6 +909,7 @@ class ADCGUI(tk.Tk):
         print("Shutting down application...")
 
         for name, obj, stop_fn in [
+            ("auto divisioner",           getattr(self, "_auto_div_thread", None),        "stop"),
             ("position routine",          getattr(self, "position_routine_thread", None), "stop"),
             ("ADC worker",                self.ADC_worker,                                "stop"),
             ("autocollimator worker",     self.worker,                                    "stop"),
