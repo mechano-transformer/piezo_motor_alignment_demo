@@ -64,20 +64,37 @@ class AutoDivisionerThread(threading.Thread):
             return self.master.alnx_smooth, self.master.alny_smooth
         return self.master.alnx, self.master.alny
 
-    def _drive_and_wait(self, axis: int, pulses: int) -> bool:
+    def _drive_and_wait(self, axis: int, pulses: int, apply_settings: bool = False) -> bool:
         """指定軸を駆動し、完了を待つ。
+
+        Args:
+            axis: 論理軸番号 (1 or 2)
+            pulses: 駆動パルス数
+            apply_settings: True の場合、swap_axes / reverse_axis の設定を反映して駆動する。
+                           検証ステップ (Step 7, 8) では True にする。
 
         wait_for_stop を試み、失敗した場合は SETTLE_DELAY 秒待機する。
         """
         pamc = self.master.pamc
-        ok = pamc.move_relative(axis, pulses)
+        physical_axis = axis
+        physical_pulses = pulses
+
+        if apply_settings:
+            if self.master.swap_axes:
+                physical_axis = 2 if axis == 1 else 1
+            if physical_axis == 1 and self.master.reverse_axis1:
+                physical_pulses = -pulses
+            elif physical_axis == 2 and self.master.reverse_axis2:
+                physical_pulses = -pulses
+
+        ok = pamc.move_relative(physical_axis, physical_pulses)
         if not ok:
-            print(f"[AutoDiv] move_relative axis={axis} pulses={pulses:+d} FAILED")
+            print(f"[AutoDiv] move_relative axis={physical_axis} pulses={physical_pulses:+d} FAILED")
             return False
 
-        finished = pamc.wait_for_stop(axis, timeout=10.0)
+        finished = pamc.wait_for_stop(physical_axis, timeout=10.0)
         if not finished:
-            print(f"[AutoDiv] wait_for_stop timeout for axis {axis}, waiting {SETTLE_DELAY}s as fallback")
+            print(f"[AutoDiv] wait_for_stop timeout for axis {physical_axis}, waiting {SETTLE_DELAY}s as fallback")
             time.sleep(SETTLE_DELAY)
 
         # 駆動後の安定化のため少し待つ
@@ -176,7 +193,7 @@ class AutoDivisionerThread(threading.Thread):
         x_before, y_before = self._read_angle()
         log.append(f"Step 7: Verification - Driving Axis 1 by +{DRIVE_PULSES} pulses")
         print(f"[AutoDiv] {log[-1]}")
-        if not self._drive_and_wait(1, DRIVE_PULSES):
+        if not self._drive_and_wait(1, DRIVE_PULSES, apply_settings=True):
             return False, "Failed to drive Axis 1 (verification)"
 
         x_after, y_after = self._read_angle()
@@ -190,7 +207,7 @@ class AutoDivisionerThread(threading.Thread):
         x_before, y_before = self._read_angle()
         log.append(f"Step 8: Verification - Driving Axis 2 by +{DRIVE_PULSES} pulses")
         print(f"[AutoDiv] {log[-1]}")
-        if not self._drive_and_wait(2, DRIVE_PULSES):
+        if not self._drive_and_wait(2, DRIVE_PULSES, apply_settings=True):
             return False, "Failed to drive Axis 2 (verification)"
 
         x_after, y_after = self._read_angle()
