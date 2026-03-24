@@ -32,7 +32,7 @@ ADC_LEARNING_RATE: float = 0.3
 ADC_MIN_STEP_PULSES: int = 1
 
 # 最大補正パルス数（1ステップの上限）。大きすぎるとオーバーシュートする。
-ADC_MAX_STEP_PULSES: int = 500
+ADC_MAX_STEP_PULSES: int = 100
 
 # キャリブレーション: 1000パルス = 2.74単位角度 → ~365 pulses/unit
 # デバイスや取り付け条件が変わった場合はここを変更する。
@@ -112,11 +112,35 @@ class ADCControlThread(threading.Thread):
             return -pulses
         return pulses
 
+    def _dynamic_max_step(self, error: float) -> int:
+        """誤差の大きさに応じて max_step を動的に決定する。
+
+        目標から遠い場合は max_step_pulses（GUI設定値）をそのまま使い、
+        目標に近い場合は小さめの値にする。
+        線形補間: error_far 以上 → max_step_pulses, error_near 以下 → max_step_near
+        """
+        # 閾値（単位角度）
+        error_near = 0.5    # この誤差以下なら近いとみなす
+        error_far  = 5.0    # この誤差以上なら遠いとみなす
+        # 近い場合の max_step（min_step_pulses 以上を保証）
+        max_step_near = max(10, self.min_step_pulses)
+
+        abs_err = abs(error)
+        if abs_err >= error_far:
+            return self.max_step_pulses
+        if abs_err <= error_near:
+            return max_step_near
+
+        # 線形補間
+        ratio = (abs_err - error_near) / (error_far - error_near)
+        return int(round(max_step_near + ratio * (self.max_step_pulses - max_step_near)))
+
     def _clamp_pulses(self, error: float, pulses: int) -> int:
         """クランプ・最小ステップ適用（収束閾値以下なら 0 を返す）。"""
         if abs(error) <= self.convergence_threshold:
             return 0
-        pulses = int(np.clip(pulses, -self.max_step_pulses, self.max_step_pulses))
+        dynamic_max = self._dynamic_max_step(error)
+        pulses = int(np.clip(pulses, -dynamic_max, dynamic_max))
         if abs(pulses) < self.min_step_pulses:
             pulses = self.min_step_pulses if pulses >= 0 else -self.min_step_pulses
         return pulses
@@ -163,7 +187,7 @@ class ADCControlThread(threading.Thread):
         else:
             # ── X 軸補正 ──────────────────────────────────────────────────────
             if pulses_x != 0:
-                print(f"ADC Step {iteration}: X error={error_x:.4f}, sending {pulses_x:+d} pulses to ch{axis_x}")
+                print(f"ADC Step {iteration}: X error={error_x:.4f}, sending {pulses_x:+d} pulses to ch{axis_x} (dynamic_max={self._dynamic_max_step(error_x)})")
                 finished = self._move_axis(axis_x, pulses_x)
                 if finished:
                     self.master.ADC_total_pulses_x += pulses_x
@@ -176,7 +200,7 @@ class ADCControlThread(threading.Thread):
 
             # ── Y 軸補正（X と同じステップで計算済みの誤差を使用）────────────
             if pulses_y != 0:
-                print(f"ADC Step {iteration}: Y error={error_y:.4f}, sending {pulses_y:+d} pulses to ch{axis_y}")
+                print(f"ADC Step {iteration}: Y error={error_y:.4f}, sending {pulses_y:+d} pulses to ch{axis_y} (dynamic_max={self._dynamic_max_step(error_y)})")
                 finished = self._move_axis(axis_y, pulses_y)
                 if finished:
                     self.master.ADC_total_pulses_y += pulses_y

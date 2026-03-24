@@ -370,7 +370,7 @@ class ADCGUI(tk.Tk):
         self.ADC_period_var                = _row("Sample Period (s):",               "0.5")
         self.ADC_lr_var                    = _row("Learning Rate:",                    "0.3")
         self.ADC_min_step_var              = _row("Min Step (pulses):",                "1")
-        self.ADC_max_step_var              = _row("Max Step (pulses):",                "500")
+        self.ADC_max_step_var              = _row("Max Step (pulses):",                "100")
         self.ADC_pulses_per_unit_var       = _row("Piezo Calibration (pulses/angle):", str(int(round(1000 / 2.74, 0))))
         self.ADC_convergence_threshold_var = _row("Convergence Threshold:",            "0.01")
         self.ADC_settle_time_var           = _row("Settle Time (s):",                  "0.2")
