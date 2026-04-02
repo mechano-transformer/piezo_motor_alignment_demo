@@ -10,6 +10,9 @@
 
 ---
 
+## デモ動画
+[リンク](https://s3.ap-northeast-1.wasabisys.com/marketingmaterial/Active Laser Beam Stabilization Systems_.mp4)参照
+
 ## 画面概要
 
 ![GUI スクリーンショット](window.png)
