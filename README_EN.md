@@ -11,7 +11,7 @@ Supported controllers:
 
 ## Demo Video
 
-[Click here](https://s3.ap-northeast-1.wasabisys.com/marketingmaterial/Active%20Laser%20Beam%20Stabilization%20Systems_.mp4) to view the demo video.
+[Click here](https://s3.ap-northeast-1.wasabisys.com/marketingmaterial/Active%20Laser%20Beam%20Stabilization%20Systems2.mp4) to view the demo video.
 
 ---
 

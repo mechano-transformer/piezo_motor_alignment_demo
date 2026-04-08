@@ -11,7 +11,7 @@
 ---
 
 ## デモ動画
-[リンク](https://s3.ap-northeast-1.wasabisys.com/marketingmaterial/Active%20Laser%20Beam%20Stabilization%20Systems_.mp4)参照
+[リンク](https://s3.ap-northeast-1.wasabisys.com/marketingmaterial/Active%20Laser%20Beam%20Stabilization%20Systems2.mp4)参照
 
 ## 画面概要
 
