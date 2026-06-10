@@ -30,7 +30,8 @@ PAMC-104 コマンド仕様（PAM-DOC-MAN-251001-007 6.3節）:
 
 注意:
   - PAMC-104 はアドレス指定なし（E%02d 形式は PAMC-204 専用）
-  - PAMC-204 との互換性のため move_relative(channel, pulses) メソッドを提供する
+  - GUI からは PAMC204 クラスと同じ共通インタフェース
+    （connect / move_relative / stop_motion / wait_for_stop など）で利用される
 """
 import serial
 import serial.tools.list_ports
@@ -51,22 +52,17 @@ class PAMC104:
     """PAMC-104 シリアル通信ラッパークラス。
 
     RS232C 経由で直接コマンドを送信する（DLL 不使用）。
-    PAMC-204 ラッパー（PAMC204 クラス）との互換性のため、
-    move_relative(channel, pulses) / wait_for_stop(channel) メソッドを提供する。
+    GUI からは PAMC204 クラスと同じ共通インタフェース
+    （connect / move_relative / stop_motion / wait_for_stop など）で利用される。
 
     Args:
-        address:  未使用（PAMC-104 はアドレス指定なし）。互換性のため残す。
-        dll_path: 未使用（PAMC-104 は DLL 不使用）。互換性のため残す。
-        port:     シリアルポート名（例: 'COM3', '/dev/ttyUSB0'）。
-                  None の場合は connect() 時に自動検索する。
+        port: シリアルポート名（例: 'COM3', '/dev/ttyUSB0'）。
+              None の場合は connect() 時に自動検索する。
     """
 
     VELOCITY_HZ: int = VELOCITY_HZ
 
-    def __init__(self, address: int = 1, dll_path: str | None = None,
-                 port: str | None = None):
-        # address / dll_path は PAMC-204 との互換性のため受け取るが使用しない
-        self.address = address
+    def __init__(self, port: str | None = None):
         self._port_name: str | None = port
         self._ser: serial.Serial | None = None
         self._connected = False
@@ -205,7 +201,7 @@ class PAMC104:
     # 駆動コマンド
     # ================================================================
 
-    def move_pulses(self, channel: int, pulses: int) -> bool:
+    def move_relative(self, channel: int, pulses: int) -> bool:
         """指定チャンネルを相対移動させる（駆動開始のみ、完了待ちなし）。
 
         pulses > 0 → 正方向（NR コマンド）
@@ -246,46 +242,37 @@ class PAMC104:
         resp = self._send_cmd(cmd, flush_before=True)
         return resp == "OK"
 
-    def move_relative(self, channel: int, pulses: int) -> bool:
-        """PAMC204 クラスとの互換性のため move_pulses の別名として提供。"""
-        return self.move_pulses(channel, pulses)
-
-    def stop(self) -> str:
+    def stop_motion(self, channel: int) -> bool:
         """駆動停止（S コマンド）。
 
+        PAMC-104 の S コマンドは全軸一括停止のため channel は使用しない
+        （共通インタフェースのため受け取る）。
+        デバイスは FIN + 実際に移動したパルス数（例: 'FIN 0042'）を返す。
+
         Returns:
-            str: FIN + 実際に移動したパルス数（例: 'FIN 0042'）
+            bool: レスポンスを受信できたら True
         """
         if not self.is_connected:
-            return ""
+            return False
         resp = self._send_cmd("S")
-        return resp
-
-    def stop_motion(self, channel: int) -> bool:
-        """PAMC204 クラスとの互換性のため stop の別名として提供。"""
-        resp = self.stop()
-        return bool(resp)
-
-    def abort_motion(self) -> bool:
-        """全軸即停止（S コマンド）。"""
-        resp = self.stop()
         return bool(resp)
 
     # ================================================================
     # 動作完了待ち
     # ================================================================
 
-    def wait_for_stop(self, channel: int, poll_interval: float = 0.05,
-                      timeout: float = 10.0) -> bool:
+    def wait_for_stop(self, channel: int, timeout: float = 10.0) -> bool:
         """動作完了待ち。
 
         PAMC-104 は駆動完了時に FIN を返す。
-        move_pulses() 後に FIN が届くまで readline() でポーリングする。
+        move_relative() 後に FIN が届くまで readline() でポーリングする。
+        readline() 自体がデータ到着までブロックするため、追加のスリープは
+        入れず FIN 到着と同時に返る。
 
         Args:
-            channel:       待機対象チャンネル番号（PAMC-104 では使用しない）
-            poll_interval: ポーリング間隔（秒）
-            timeout:       タイムアウト（秒）
+            channel: 待機対象チャンネル番号（PAMC-104 では使用しない。
+                     共通インタフェースのため受け取る）
+            timeout: タイムアウト（秒）
         Returns:
             bool: 停止確認できたら True、タイムアウトなら False
         """
@@ -305,12 +292,12 @@ class PAMC104:
             except Exception as e:
                 print(f"[PAMC104] wait_for_stop error: {e}")
                 return False
-            time.sleep(poll_interval)
         print(f"[PAMC104] wait_for_stop: timeout ch{channel}")
         return False
 
     # ================================================================
-    # 情報取得（PAMC204 互換スタブ）
+    # 情報取得（PAMC-104 非対応機能のスタブ）
+    # GUI が共通インタフェースとして呼び出すため、非対応を示す値を返す。
     # ================================================================
 
     def query_actual_position(self, channel: int):

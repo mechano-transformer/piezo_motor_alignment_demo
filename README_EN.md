@@ -283,12 +283,13 @@ Performs automatic drift correction.
 
 | Parameter             | Default    | Description             |
 | --------------------- | ---------- | ----------------------- |
-| Sample Period         | 0.5 s      | Control loop interval   |
+| Sample Period         | 0.5 s      | Control loop interval while converged (no correction). After a correction step, the loop waits only the Settle Time before the next step |
 | Learning Rate         | 0.3        | Correction gain         |
 | Min Step              | 1 pulse    | Minimum correction step |
 | Max Step              | 500 pulses | Maximum correction step |
 | Piezo Calibration     | 365        | pulses per angle unit   |
 | Convergence Threshold | 0.01       | error threshold         |
+| Settle Time           | 0.2 s      | Wait time after a motor move before the next correction step |
 
 ---
 
