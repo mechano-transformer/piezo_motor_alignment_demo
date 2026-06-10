@@ -17,6 +17,7 @@ class AcThread(threading.Thread):
         self.sample_period = float(sample_period)
         self.running = False
         self.paused = False
+        self._stop_event = threading.Event()
         # スムージングバッファ
         self.x_buffer = []
         self.y_buffer = []
@@ -24,9 +25,13 @@ class AcThread(threading.Thread):
     def run(self):
         self.running = True
         while self.running:
+            start = time.monotonic()
             if not self.paused:
                 self.read_ac_data()
-            time.sleep(self.sample_period)
+            # 通信にかかった時間を差し引き、サンプル周期を一定に保つ。
+            # stop() で即時に起床できるよう Event で待つ。
+            elapsed = time.monotonic() - start
+            self._stop_event.wait(max(0.0, self.sample_period - elapsed))
 
     def read_ac_data(self):
         try:
@@ -87,3 +92,4 @@ class AcThread(threading.Thread):
 
     def stop(self):
         self.running = False
+        self._stop_event.set()

@@ -269,7 +269,7 @@ class PAMC204:
             return list(statuses)
         return None
 
-    def wait_for_stop(self, channel, poll_interval=0.05, timeout=5.0):
+    def wait_for_stop(self, channel, poll_interval=0.02, timeout=5.0):
         """動作完了待ち（ExxmMD? でポーリング）。
 
         pamc204_query_motion_status を使って指定チャンネルの

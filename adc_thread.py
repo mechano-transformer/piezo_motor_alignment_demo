@@ -14,7 +14,8 @@ X・Y 両軸の誤差はステップ開始時に一度だけ計算し、X 駆動
   ADC_MAX_STEP_PULSES  : 最大補正パルス数。大きすぎるとオーバーシュートする
   ADC_PULSES_PER_UNIT  : キャリブレーション値（1単位角度あたりのパルス数）
   ADC_CONVERGENCE_THR  : 収束判定閾値。この誤差以下では補正しない
-  ADC_SAMPLE_PERIOD    : 制御ループ周期（秒）
+  ADC_SAMPLE_PERIOD    : 制御ループ周期（秒）。補正なし（収束中）のときの待ち時間
+  ADC_SETTLE_TIME      : モーター駆動後の整定待ち時間（秒）。駆動後はこれだけ待って即次の補正へ進む
 """
 import threading
 import time
@@ -41,8 +42,13 @@ ADC_PULSES_PER_UNIT: float = round(1000 / 2.74, 2)  # ~365
 # 収束判定閾値（単位角度）。誤差がこの値以下なら補正しない。
 ADC_CONVERGENCE_THR: float = 0.01
 
-# 制御ループ周期（秒）。短くすると応答が速くなるが CPU 負荷が増える。
+# 制御ループ周期（秒）。補正なし（収束中）のときの待ち時間。
+# 短くすると応答が速くなるが CPU 負荷が増える。
 ADC_SAMPLE_PERIOD: float = 0.5
+
+# モーター駆動後の整定待ち時間（秒）。
+# 駆動後は周期いっぱい待たず、この時間だけ待って即次の補正へ進む。
+ADC_SETTLE_TIME: float = 0.2
 
 # ---------------------------------------------------------------------------
 
@@ -55,8 +61,10 @@ class ADCControlThread(threading.Thread):
         self.daemon = True
         self.master = master
         self.sample_period = float(sample_period)
+        self.settle_time: float = ADC_SETTLE_TIME
         self.running = False
         self.paused = False
+        self._stop_event = threading.Event()
 
         # キャリブレーション
         self.pulses_per_unit: float = ADC_PULSES_PER_UNIT
@@ -79,9 +87,11 @@ class ADCControlThread(threading.Thread):
         print("ADC control thread started")
 
         while self.running:
+            step_start = time.monotonic()
+            moved = False
             if not self.paused and self.master.ADC_active:
                 try:
-                    self._control_step(iteration)
+                    moved = self._control_step(iteration)
                     iteration += 1
                 except Exception as e:
                     print(f"ADC control error: {e}")
@@ -91,7 +101,15 @@ class ADCControlThread(threading.Thread):
                 if iteration % 10 == 0:
                     status = "paused" if self.paused else "inactive"
                     print(f"ADC thread running but {status} (ADC_active={self.master.ADC_active})")
-            time.sleep(self.sample_period)
+
+            if moved:
+                # 駆動後は整定時間だけ待ち、即次の補正ステップへ進む
+                wait = self.settle_time
+            else:
+                # 補正なし（収束中・停止中）はステップ所要時間を差し引いて周期を守る
+                wait = max(0.05, self.sample_period - (time.monotonic() - step_start))
+            # stop() で即時に起床できるよう Event で待つ
+            self._stop_event.wait(wait)
 
         print("ADC control thread stopped")
 
@@ -151,17 +169,21 @@ class ADCControlThread(threading.Thread):
         current_y = self.master.alny_smooth if self.master.smoothing_enabled else self.master.alny
         return current_x - self.master.ADC_target_x, current_y - self.master.ADC_target_y
 
-    def _control_step(self, iteration: int) -> None:
+    def _control_step(self, iteration: int) -> bool:
         """1ステップの ADC 制御を実行する（勾配降下法）。
 
         X・Y 両軸の誤差をステップ開始時に一度だけ計算し、
-        X軸 → Y軸 の順に順次駆動する（settle_time なし）。
+        X軸 → Y軸 の順に順次駆動する。
         収束閾値内に入ったら補正しない（オーバーシュート防止）。
+
+        Returns:
+            bool: モーターを駆動した（駆動を試みた）場合は True。
+                  True のとき呼び出し元は settle_time だけ待って次ステップへ進む。
         """
         pamc = self.master.pamc
         if not pamc.is_connected:
             print("ADC: PAMC-204 not connected")
-            return
+            return False
 
         # 軸割り当て（デフォルト: X→ch2, Y→ch1 / スワップ時: X→ch1, Y→ch2）
         if self.master.swap_axes:
@@ -182,9 +204,11 @@ class ADCControlThread(threading.Thread):
         pulses_y = self._apply_reverse(pulses_y, axis_y)
         pulses_y = self._clamp_pulses(error_y, pulses_y)
 
+        moved = False
         if pulses_x == 0 and pulses_y == 0:
             print(f"ADC Step {iteration}: X error={error_x:.4f}, Y error={error_y:.4f}, no correction needed")
         else:
+            moved = True
             # ── X 軸補正 ──────────────────────────────────────────────────────
             if pulses_x != 0:
                 print(f"ADC Step {iteration}: X error={error_x:.4f}, sending {pulses_x:+d} pulses to ch{axis_x} (dynamic_max={self._dynamic_max_step(error_x)})")
@@ -194,7 +218,7 @@ class ADCControlThread(threading.Thread):
                 else:
                     print(f"ADC Step {iteration}: X move failed/timeout, skipping Y correction")
                     self.master.after(0, self.master.update_ADC_display)
-                    return
+                    return moved
             else:
                 print(f"ADC Step {iteration}: X error={error_x:.4f}, no X correction needed")
 
@@ -207,7 +231,7 @@ class ADCControlThread(threading.Thread):
                 else:
                     print(f"ADC Step {iteration}: Y move failed/timeout")
                     self.master.after(0, self.master.update_ADC_display)
-                    return
+                    return moved
             else:
                 print(f"ADC Step {iteration}: Y error={error_y:.4f}, no Y correction needed")
 
@@ -217,6 +241,7 @@ class ADCControlThread(threading.Thread):
         self.prev_pulses_y = pulses_y
 
         self.master.after(0, self.master.update_ADC_display)
+        return moved
 
     def _move_axis(self, channel: int, pulses: int) -> bool:
         """PAMC の指定チャンネルを相対移動させ、完了を待つ。
@@ -243,3 +268,4 @@ class ADCControlThread(threading.Thread):
 
     def stop(self) -> None:
         self.running = False
+        self._stop_event.set()
