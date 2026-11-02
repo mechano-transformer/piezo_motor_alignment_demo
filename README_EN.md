@@ -1,4 +1,4 @@
-# Autocollimator & Piezo Motor Alignment Demo
+# Piezo Motor Alignment Demo
 
 This application demonstrates **Automated Drift Correction (ADC)** by combining an **autocollimator** with a **piezo motor controller**.
 
