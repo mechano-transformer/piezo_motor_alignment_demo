@@ -1,4 +1,4 @@
-# Autocollimator & Piezo Motor Alignment Demo
+# Piezo Motor Alignment Demo
 
 オートコリメータ（自動準直器）とピエゾモーターコントローラーを組み合わせた、
 **自動ドリフト補正（ADC: Automated Drift Correction）** デモアプリケーションです。
